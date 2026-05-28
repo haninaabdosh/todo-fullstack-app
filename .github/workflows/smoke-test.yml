@@ -1,0 +1,32 @@
+name: Docker Compose Smoke Test
+
+on: [push, pull_request]
+
+jobs:
+  smoke-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@v4
+
+      - name: Start containers using Docker Compose
+        run: docker compose up -d --build
+
+      - name: Wait for services and execute smoke test
+        run: |
+          echo "Waiting 15 seconds for backend and frontend to fully spin up..."
+          sleep 15
+          
+          # This verifies that a container web server responds on localhost
+          if curl -fsS http://localhost:3000 || curl -fsS http://localhost:8080 || curl -fsS http://localhost:5000; then
+            echo "Smoke test passed! The container stack is alive and reachable."
+            exit 0
+          else
+            echo "Smoke test failed! Application endpoints did not answer."
+            docker compose logs
+            exit 1
+          fi
+
+      - name: Shut down active container environment
+        if: always()
+        run: docker compose down
