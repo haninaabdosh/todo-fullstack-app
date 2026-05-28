@@ -1,0 +1,58 @@
+name: Build, Smoke Test, and Push Stack
+
+on:
+  push:
+    branches: [ "main", "master" ]
+
+jobs:
+  smoke-test-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@v4
+
+      # 1. RUN THE SMOKE TEST USING YOUR DOCKER-COMPOSE.YML
+      - name: Start environment with Docker Compose
+        run: docker compose up -d --build
+
+      # We test both backend (5000) and frontend (3000) channels
+      - name: Execute Live Smoke Test
+        run: |
+          echo "Giving containers 15 seconds to spin up..."
+          sleep 15
+          if curl -fsS http://localhost:3000 && curl -fsS http://localhost:5000; then
+            echo "SUCCESS: Entire multi-container stack responds flawlessly!"
+          else
+            echo "ERROR: One or more containers failed to respond."
+            docker compose logs
+            exit 1
+          fi
+
+      - name: Shut down test containers
+        run: docker compose down
+
+      # 2. LOG IN AND PUSH THE SEPARATE IMAGES TO YOUR PROFILE
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and Push Backend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          push: true
+          tags: ghcr.io/${{ github.repository }}-backend:latest
+
+      - name: Build and Push Frontend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ././frontend
+          push: true
+          tags: ghcr.io/${{ github.repository }}-frontend:latest
